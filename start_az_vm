@@ -1,0 +1,39 @@
+# Connect to Azure
+Connect-AzAccount
+
+# Path to the CSV file
+$csvFilePath = "C:\path\to\your\vm_list.csv"
+
+# Import the CSV file
+# Ensure the CSV contains a single column: VMName
+$vms = Import-Csv -Path $csvFilePath
+
+# Loop through each VM in the CSV file
+foreach ($vm in $vms) {
+    $vmName = $vm.VMName
+
+    # Get the resource group of the VM
+    $vmDetails = Get-AzVM | Where-Object { $_.Name -eq $vmName }
+    if (-not $vmDetails) {
+        Write-Host "VM $vmName not found. Skipping..." -ForegroundColor Yellow
+        continue
+    }
+    $resourceGroup = $vmDetails.ResourceGroupName
+
+    # Check the current power state of the VM
+    $status = (Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -Status).Statuses |
+              Where-Object { $_.Code -like "PowerState*" }
+
+    # Output current status
+    Write-Host "VM Name: $vmName - Resource Group: $resourceGroup - Status: $($status.DisplayStatus)"
+
+    # If the VM is deallocated or stopped, start it
+    if ($status.Code -eq "PowerState/deallocated" -or $status.Code -eq "PowerState/stopped") {
+        Write-Host "Starting VM: $vmName"
+        Start-AzVM -ResourceGroupName $resourceGroup -Name $vmName
+    } else {
+        Write-Host "VM $vmName is already running."
+    }
+}
+
+Write-Host "Script completed."
