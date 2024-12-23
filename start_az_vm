@@ -1,6 +1,13 @@
 # Connect to Azure
 Connect-AzAccount
 
+# Set the subscription ID or name
+# Replace with your subscription ID or name
+$subscriptionId = "YourSubscriptionId"
+
+# Set the context to the desired subscription
+Set-AzContext -SubscriptionId $subscriptionId
+
 # Path to the CSV file
 $csvFilePath = "C:\path\to\your\vm_list.csv"
 
@@ -15,7 +22,7 @@ foreach ($vm in $vms) {
     # Get the resource group of the VM
     $vmDetails = Get-AzVM | Where-Object { $_.Name -eq $vmName }
     if (-not $vmDetails) {
-        Write-Host "VM $vmName not found. Skipping..." -ForegroundColor Yellow
+        Write-Host "VM $vmName not found in the subscription. Skipping..." -ForegroundColor Yellow
         continue
     }
     $resourceGroup = $vmDetails.ResourceGroupName
