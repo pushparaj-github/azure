@@ -1,13 +1,6 @@
 # Connect to Azure
 Connect-AzAccount
 
-# Set the subscription ID or name
-# Replace with your subscription ID or name
-$subscriptionId = "YourSubscriptionId"
-
-# Set the context to the desired subscription
-Set-AzContext -SubscriptionId $subscriptionId
-
 # Path to the CSV file
 $csvFilePath = "C:\path\to\your\vm_list.csv"
 
@@ -18,28 +11,43 @@ $vms = Import-Csv -Path $csvFilePath
 # Loop through each VM in the CSV file
 foreach ($vm in $vms) {
     $vmName = $vm.VMName
+    $vmFound = $false
 
-    # Get the resource group of the VM
-    $vmDetails = Get-AzVM | Where-Object { $_.Name -eq $vmName }
-    if (-not $vmDetails) {
-        Write-Host "VM $vmName not found in the subscription. Skipping..." -ForegroundColor Yellow
-        continue
+    # Loop through all subscriptions
+    $subscriptions = Get-AzSubscription
+    foreach ($subscription in $subscriptions) {
+        # Set the current subscription
+        Set-AzContext -SubscriptionId $subscription.SubscriptionId
+
+        # Check if the VM exists in this subscription
+        $vmDetails = Get-AzVM -Status | Where-Object { $_.Name -eq $vmName }
+        if ($vmDetails) {
+            $vmFound = $true
+            $resourceGroup = $vmDetails.ResourceGroupName
+
+            # Output subscription and resource group information
+            Write-Host "VM Name: $vmName - Found in Subscription: $($subscription.Name) - Resource Group: $resourceGroup"
+
+            # Check the current power state of the VM
+            $status = $vmDetails.Statuses | Where-Object { $_.Code -like "PowerState*" }
+
+            # Output current status
+            Write-Host "VM Name: $vmName - Status: $($status.DisplayStatus)"
+
+            # If the VM is deallocated or stopped, start it
+            if ($status.Code -eq "PowerState/deallocated" -or $status.Code -eq "PowerState/stopped") {
+                Write-Host "Starting VM: $vmName"
+                Start-AzVM -ResourceGroupName $resourceGroup -Name $vmName
+            } else {
+                Write-Host "VM $vmName is already running."
+            }
+
+            break
+        }
     }
-    $resourceGroup = $vmDetails.ResourceGroupName
 
-    # Check the current power state of the VM
-    $status = (Get-AzVM -ResourceGroupName $resourceGroup -Name $vmName -Status).Statuses |
-              Where-Object { $_.Code -like "PowerState*" }
-
-    # Output current status
-    Write-Host "VM Name: $vmName - Resource Group: $resourceGroup - Status: $($status.DisplayStatus)"
-
-    # If the VM is deallocated or stopped, start it
-    if ($status.Code -eq "PowerState/deallocated" -or $status.Code -eq "PowerState/stopped") {
-        Write-Host "Starting VM: $vmName"
-        Start-AzVM -ResourceGroupName $resourceGroup -Name $vmName
-    } else {
-        Write-Host "VM $vmName is already running."
+    if (-not $vmFound) {
+        Write-Host "VM $vmName not found in any subscription. Skipping..." -ForegroundColor Yellow
     }
 }
 
